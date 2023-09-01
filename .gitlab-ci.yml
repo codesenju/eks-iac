@@ -1,0 +1,79 @@
+---
+workflow:
+    rules:
+      - if: $CI_COMMIT_BRANCH != "main" && $CI_PIPELINE_SOURCE != "merge_request_event"
+        when: never
+      - when: always
+
+variables:
+  TF_DIR: ${CI_PROJECT_DIR}/terraform
+  AWS_CREDS_TARGET_ROLE: arn:aws:iam::587878432697:role/001_gitlab_poweruser
+  AWS_DEFAULT_REGION: us-east-1
+  ENV: prod
+stages:
+  - validate
+  - plan
+  - apply
+  - destroy
+
+image:
+  name: codesenju/awscliv2-terraform_1_5_4-eksctl_0_150:amazonlinux2
+#  name: zenika/terraform-aws-cli # https://hub.docker.com/r/zenika/terraform-aws-cli
+  entrypoint: ["sh","-c"]
+
+before_script:
+  - terraform --version
+  - cd ${TF_DIR}
+  - terraform init # -reconfigure
+#  - terraform get
+#  - pwd
+#  - ls -la
+#  - ls -la modules/network
+
+validate:
+  stage: validate
+  script:
+    - terraform validate
+  cache:
+    key: ${CI_COMMIT_REF_NAME}
+    paths:
+    - ${TF_DIR}/.terraform
+    policy: pull-push
+
+plan:
+  stage: plan
+  script:
+    - terraform plan -var-file env/${ENV}.tfvars
+  dependencies:
+    - validate
+  cache:
+    key: ${CI_COMMIT_REF_NAME}
+    paths:
+    - ${TF_DIR}/.terraform
+    policy: pull
+
+apply:
+  stage: apply
+  script:
+    - terraform apply -auto-approve -var-file env/${ENV}.tfvars
+  dependencies:
+    - plan
+  cache:
+    key: ${CI_COMMIT_REF_NAME}
+    paths:
+    - ${TF_DIR}/.terraform
+    policy: pull
+#  when: manual # Requires manual trigger
+destroy:
+  stage: destroy
+  script:
+    - terraform destroy -auto-approve -var-file env/${ENV}.tfvars
+  dependencies:
+    - plan
+    - apply
+  cache:
+    key: ${CI_COMMIT_REF_NAME}
+    paths:
+    - ${TF_DIR}/.terraform
+    policy: pull
+  when: manual # Requires manual trigger
